@@ -2,6 +2,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { cartService, type Cart } from "../services/cart";
 import { type Product } from "../services/products";
 import { useAuthStore } from "../store/authStore";
+import { useUIStore } from "../store/uiStore";
 
 export const useCart = () => {
   const { isAuthenticated } = useAuthStore();
@@ -11,11 +12,19 @@ export const useCart = () => {
     queryFn: () => cartService.getCart(),
     enabled: isAuthenticated,
     staleTime: 0, // Always fetch fresh cart data
+    gcTime: 0, // Don't cache - always refetch
+    refetchOnWindowFocus: true, // Refetch when window regains focus
+    refetchOnMount: true, // Refetch when component mounts
+    notifyOnChangeProps: "all", // Notify on all property changes to ensure re-renders
+    structuralSharing: false, // Disable structural sharing to ensure re-renders on cache updates
   });
 };
 
 export const useAddToCart = () => {
   const queryClient = useQueryClient();
+  const incrementCartMutationVersion = useUIStore(
+    (state) => state.incrementCartMutationVersion
+  );
 
   return useMutation({
     mutationFn: ({
@@ -25,20 +34,44 @@ export const useAddToCart = () => {
       productId: string;
       quantity?: number;
     }) => cartService.addToCart(productId, quantity || 1),
-    onSuccess: (data) => {
-      // Update the cache with the new cart data immediately
+    onSuccess: async (data) => {
+      // Increment mutation version to force UI updates
+      incrementCartMutationVersion();
+      // Immediately update cache with new data to trigger UI updates
       if (data?.cart) {
-        queryClient.setQueryData(["cart"], data);
+        // Use setQueryData with updater function to ensure React Query sees it as changed
+        queryClient.setQueryData(["cart"], () => {
+          // Always return new object to force React Query to notify subscribers
+          return {
+            success: data.success,
+            cart: {
+              _id: data.cart._id,
+              user: data.cart.user,
+              items: data.cart.items.map((item) => ({
+                product:
+                  typeof item.product === "object"
+                    ? { ...item.product }
+                    : item.product,
+                quantity: item.quantity,
+              })),
+            },
+          };
+        });
       }
-      // Also invalidate and refetch to ensure consistency
-      queryClient.invalidateQueries({ queryKey: ["cart"] });
-      queryClient.refetchQueries({ queryKey: ["cart"] });
+      // Also invalidate to mark as stale
+      queryClient.invalidateQueries({
+        queryKey: ["cart"],
+        refetchType: "active",
+      });
     },
   });
 };
 
 export const useUpdateCartItem = () => {
   const queryClient = useQueryClient();
+  const incrementCartMutationVersion = useUIStore(
+    (state) => state.incrementCartMutationVersion
+  );
 
   return useMutation({
     mutationFn: ({
@@ -48,26 +81,76 @@ export const useUpdateCartItem = () => {
       productId: string;
       quantity: number;
     }) => cartService.updateCartItem(productId, quantity),
-    onSuccess: (data) => {
-      // Update the cache with the new cart data immediately
+    onSuccess: async (data) => {
+      // Increment mutation version to force UI updates
+      incrementCartMutationVersion();
+      // Immediately update cache with new data to trigger UI updates
       if (data?.cart) {
-        queryClient.setQueryData(["cart"], data);
+        // Use setQueryData with updater function to ensure React Query sees it as changed
+        queryClient.setQueryData(["cart"], () => {
+          // Always return new object to force React Query to notify subscribers
+          return {
+            success: data.success,
+            cart: {
+              _id: data.cart._id,
+              user: data.cart.user,
+              items: data.cart.items.map((item) => ({
+                product:
+                  typeof item.product === "object"
+                    ? { ...item.product }
+                    : item.product,
+                quantity: item.quantity,
+              })),
+            },
+          };
+        });
       }
-      // Also invalidate and refetch to ensure consistency
-      queryClient.invalidateQueries({ queryKey: ["cart"] });
-      queryClient.refetchQueries({ queryKey: ["cart"] });
+      // Also invalidate to mark as stale
+      queryClient.invalidateQueries({
+        queryKey: ["cart"],
+        refetchType: "active",
+      });
     },
   });
 };
 
 export const useRemoveFromCart = () => {
   const queryClient = useQueryClient();
+  const incrementCartMutationVersion = useUIStore(
+    (state) => state.incrementCartMutationVersion
+  );
 
   return useMutation({
     mutationFn: (productId: string) => cartService.removeFromCart(productId),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["cart"] });
-      queryClient.refetchQueries({ queryKey: ["cart"] });
+    onSuccess: async (data) => {
+      // Increment mutation version to force UI updates
+      incrementCartMutationVersion();
+      // Immediately update cache with new data to trigger UI updates
+      if (data?.cart) {
+        // Use setQueryData with updater function to ensure React Query sees it as changed
+        queryClient.setQueryData(["cart"], () => {
+          // Always return new object to force React Query to notify subscribers
+          return {
+            success: data.success,
+            cart: {
+              _id: data.cart._id,
+              user: data.cart.user,
+              items: data.cart.items.map((item) => ({
+                product:
+                  typeof item.product === "object"
+                    ? { ...item.product }
+                    : item.product,
+                quantity: item.quantity,
+              })),
+            },
+          };
+        });
+      }
+      // Also invalidate to mark as stale
+      queryClient.invalidateQueries({
+        queryKey: ["cart"],
+        refetchType: "active",
+      });
     },
   });
 };

@@ -12,7 +12,9 @@ import { useAuthStore } from "../../store/authStore";
 import { cartService } from "../../services/cart";
 import { useUIStore } from "../../store/uiStore";
 import { toast } from "sonner";
+import { useQueryClient } from "@tanstack/react-query";
 import type { Product } from "../../services/products";
+import type { Cart, CartItem } from "../../services/cart";
 
 interface ProductCardProps {
   product: Product;
@@ -21,10 +23,15 @@ interface ProductCardProps {
 const ProductCard = ({ product }: ProductCardProps) => {
   const { isAuthenticated } = useAuthStore();
   const triggerCartUpdate = useUIStore((state) => state.triggerCartUpdate);
+  // Subscribe to cartUpdated to recalculate cartItem when guest cart changes
+  const cartUpdated = useUIStore((state) => state.cartUpdated);
+  // Subscribe to cartMutationVersion to recalculate cartItem when authenticated cart changes
+  const cartMutationVersion = useUIStore((state) => state.cartMutationVersion);
   const addToCartMutation = useAddToCart();
   const updateCartItemMutation = useUpdateCartItem();
   const removeFromCartMutation = useRemoveFromCart();
   const { data: cartData } = useCart();
+  const queryClient = useQueryClient();
   const [quantity, setQuantity] = useState(1);
   const [isAdding, setIsAdding] = useState(false);
   const [showCounter, setShowCounter] = useState(false);
@@ -38,7 +45,11 @@ const ProductCard = ({ product }: ProductCardProps) => {
   const maxQuantity = product.stockQuantity;
 
   // Check if product is in cart
+  // Include cartUpdated and cartMutationVersion as dependencies so this recalculates when cart changes
   const cartItem = useMemo(() => {
+    // Use cartUpdated and cartMutationVersion to force recalculation (prevents tree-shaking)
+    if (cartUpdated < 0 || cartMutationVersion < 0) return null;
+
     if (isAuthenticated && cartData?.cart?.items) {
       return cartData.cart.items.find(
         (item) => item.product._id === product._id
@@ -49,7 +60,14 @@ const ProductCard = ({ product }: ProductCardProps) => {
       return guestCart.find((item) => item.productSlug === productSlug);
     }
     return null;
-  }, [isAuthenticated, cartData, product._id, product.slug]);
+  }, [
+    isAuthenticated,
+    cartData,
+    product._id,
+    product.slug,
+    cartUpdated,
+    cartMutationVersion,
+  ]);
 
   // Initialize quantity from cart if item exists
   useEffect(() => {
@@ -130,15 +148,43 @@ const ProductCard = ({ product }: ProductCardProps) => {
     setIsAdding(true);
     try {
       if (isAuthenticated) {
-        await addToCartMutation.mutateAsync({
-          productId: product._id,
-          quantity,
-        });
+        // Get current cart state directly from query client to ensure we have latest data
+        const currentCartData = queryClient.getQueryData<{
+          success: boolean;
+          cart: Cart;
+        }>(["cart"]);
+        const existingCartItem = currentCartData?.cart?.items?.find(
+          (item: CartItem) => {
+            // Product can be populated (object) or just an ID (string) depending on API response
+            const productId =
+              typeof item.product === "object"
+                ? item.product._id
+                : item.product;
+            return productId === product._id;
+          }
+        );
+
+        // If item is already in cart, update quantity instead of adding
+        if (existingCartItem) {
+          const currentQuantity =
+            typeof existingCartItem.quantity === "number"
+              ? existingCartItem.quantity
+              : 0;
+          const newQuantity = currentQuantity + quantity;
+          await updateCartItemMutation.mutateAsync({
+            productId: product._id,
+            quantity: newQuantity,
+          });
+        } else {
+          await addToCartMutation.mutateAsync({
+            productId: product._id,
+            quantity,
+          });
+        }
       } else {
         // Use slug or fallback to _id for guest cart
         const productSlug = product.slug || product._id;
         cartService.addToGuestCart(productSlug, quantity);
-
         triggerCartUpdate();
       }
       // Show counter with smooth animation
