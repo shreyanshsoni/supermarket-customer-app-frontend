@@ -1,5 +1,4 @@
 import { useQuery } from "@tanstack/react-query";
-import { productService } from "../services/products";
 import type { Product } from "../services/products";
 
 export interface CartItemValidation {

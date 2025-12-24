@@ -12,6 +12,8 @@ export interface Product {
   };
   price: number;
   stockQuantity: number;
+  stock?: number; // Alternative field name for stock
+  sku?: string; // SKU field (optional)
   images: string[];
   status: string;
 }
