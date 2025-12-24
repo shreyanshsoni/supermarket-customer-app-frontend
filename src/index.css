@@ -278,3 +278,42 @@
 .animate-slide-out-down {
   animation: slide-out-down 0.3s ease-out;
 }
+
+/* Invoice Print Styles */
+@media print {
+  @page {
+    size: A4;
+    margin: 0;
+  }
+  
+  body {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+  
+  /* Hide non-printable elements */
+  header,
+  footer,
+  nav,
+  .print\\:hidden {
+    display: none !important;
+  }
+  
+  /* Invoice paper styles */
+  .print\\:shadow-none {
+    box-shadow: none !important;
+  }
+  
+  .print\\:bg-white {
+    background-color: white !important;
+  }
+  
+  .print\\:py-0 {
+    padding-top: 0 !important;
+    padding-bottom: 0 !important;
+  }
+  
+  .print\\:max-w-none {
+    max-width: none !important;
+  }
+}
